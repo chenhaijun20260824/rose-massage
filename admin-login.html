@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>后台登录 - 玫瑰按摩</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: linear-gradient(135deg, #C2185B, #E91E63);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .login-box {
+    background: #fff;
+    border-radius: 20px;
+    padding: 40px 30px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.2);
+    max-width: 360px;
+    width: 90%;
+  }
+  .title {
+    text-align: center;
+    font-size: 22px;
+    font-weight: bold;
+    color: #C2185B;
+    margin-bottom: 30px;
+  }
+  .input-group {
+    margin-bottom: 20px;
+  }
+  .input-group label {
+    display: block;
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 8px;
+  }
+  .input-group input {
+    width: 100%;
+    padding: 14px 16px;
+    border: 2px solid #f0f0f0;
+    border-radius: 12px;
+    font-size: 16px;
+    transition: border-color .2s;
+  }
+  .input-group input:focus {
+    outline: none;
+    border-color: #E91E63;
+  }
+  .btn {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, #C2185B, #E91E63);
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: transform .1s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+  }
+  .back-link {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 14px;
+  }
+  .back-link a {
+    color: #C2185B;
+    text-decoration: none;
+  }
+  .toast {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%,-50%);
+    background: rgba(0,0,0,.8);
+    color: #fff;
+    padding: 12px 28px;
+    border-radius: 10px;
+    font-size: 14px;
+    z-index: 99999;
+  }
+</style>
+
+  <!-- PWA 配置 -->
+  <link rel="manifest" href="manifest.json?v=20260817">
+  <meta name="theme-color" content="#C2185B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%23C2185B' width='192' height='192' rx='24'/%3E%3Ctext x='96' y='120' font-size='80' text-anchor='middle'%3E🌹%3C/text%3E%3C/svg%3E">
+<script>
+window.imgErr = function(img) {
+  try {
+    img.onerror = null;
+    img.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 280 220'><rect width='280' height='220' fill='%23fce4ec'/><text x='140' y='125' font-size='40' text-anchor='middle' fill='%23C2185B'>暂无图片</text></svg>";
+  } catch (e) {}
+};
+</script>
+</head>
+<body>
+
+<div class="login-box">
+  <div class="title">🔐 后台管理登录</div>
+
+  <div class="input-group">
+    <label>管理员密码</label>
+    <input type="password" id="pwdInput" placeholder="请输入密码" autofocus>
+  </div>
+
+  <button class="btn" id="loginBtn" onclick="doLogin()">登录</button>
+
+  <div class="back-link">
+    <a href="index.html?v=20260817">← 返回首页</a>
+  </div>
+</div>
+
+<script>
+var ADMIN_PWD = 'admin123'; // 与 admin.html 保持一致
+
+function toast(msg) {
+  var el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(function() { el.remove(); }, 2200);
+}
+
+function doLogin() {
+  var pwd = document.getElementById('pwdInput').value.trim();
+  var btn = document.getElementById('loginBtn');
+
+  if (!pwd) {
+    toast('请输入密码');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '登录中...';
+
+  setTimeout(function() {
+    if (pwd === ADMIN_PWD) {
+      // 保存登录态
+      localStorage.setItem('rose_admin_logged', '1');
+      toast('登录成功');
+      setTimeout(function() {
+        location.href = 'admin.html?v=20260817';
+      }, 800);
+    } else {
+      toast('密码错误');
+      btn.disabled = false;
+      btn.textContent = '登录';
+    }
+  }, 500);
+}
+
+// 回车提交
+document.getElementById('pwdInput').addEventListener('keypress', function(e) {
+  if (e.key === 'Enter') doLogin();
+});
+</script>
+
+
+<script>
+// 注册 Service Worker (PWA)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js?v=20260817')
+    .then(function(reg) { console.log('[PWA] SW 注册成功:', reg.scope); })
+    .catch(function(err) { console.log('[PWA] SW 注册失败:', err); });
+}
+</script>
+</body>
+</html>
