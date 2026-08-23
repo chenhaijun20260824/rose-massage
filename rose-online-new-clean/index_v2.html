@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <script>
+/*
+ * rose-sync.js — 本地优先同步核心库（取代 jsonbin.js）
+ * 架构：本地优先（localStorage 永远可用），可选接入轻量后端做多端同步。
+ * 默认不接任何云端：零额度、零网络依赖、不会弹"密钥失败"红条。
+ * 多端同步：给 window.RoseSyncAdapter 赋值适配器即可（见 sync-adapter.js 示例）。
+ */
+var JB = {
+  BINS: { accounts: 'accounts', technicians: 'technicians', notices: 'notices', audit_log: 'audit_log' },
+  _adapterNow: function () {
+    try { return (typeof window !== 'undefined' && window.RoseSyncAdapter) ? window.RoseSyncAdapter : null; }
+    catch (e) { return null; }
+  },
+  _storageKey: function (binKey) { return 'rose_' + binKey; },
+  _unwrap: function (v) {
+    var depth = 0;
+    while (depth < 5 && v && typeof v === 'object' && 'record' in v && Object.keys(v).length <= 2) { v = v.record; depth++; }
+    return v;
+  },
+  _getLocal: function (binKey) {
+    try {
+      var v = localStorage.getItem(this._storageKey(binKey));
+      if (!v) return [];
+      return this._unwrap(JSON.parse(v));
+    } catch (e) { return []; }
+  },
+  _setLocal: function (binKey, data) {
+    try {
+      localStorage.setItem(this._storageKey(binKey), JSON.stringify(data));
+      return true;
+    } catch (e) {
+      if (typeof toast === 'function') toast('本地存储已满，请清理浏览器缓存');
+      return false;
+    }
+  },
+  _mergeLists: function (localArr, cloudArr, binKey) {
+    var self = this;
+    var delSet = {};
+    if (binKey) self.getDeleted(binKey).forEach(function (id) { delSet[id] = true; });
+    var map = {}, noKey = [];
+    function ts(it) { return (it && (it.updateTime || it.time || it.registerTime)) || 0; }
+    function keyOf(it) { return it && (it.id || it.account || it.accountId); }
+    function isDel(it) { var k = keyOf(it); return k && delSet[k]; }
+    function add(it) {
+      if (!it || typeof it !== "object") return;
+      if (isDel(it)) return;
+      var k = keyOf(it);
+      if (!k) { noKey.push(it); return; }
+      if (!map[k]) map[k] = [it, ts(it)];
+      else if (ts(it) > map[k][1]) map[k] = [it, ts(it)];
+    }
+    (Array.isArray(cloudArr) ? cloudArr : []).forEach(add);
+    (Array.isArray(localArr) ? localArr : []).forEach(add);
+    var out = [];
+    Object.keys(map).forEach(function (k) { out.push(map[k][0]); });
+    return out.concat(noKey);
+  },
+  get: function (binKey, cb) {
+    var self = this;
+    var local = this._getLocal(binKey);
+    var adapter = this._adapterNow();
+    if (adapter && typeof adapter.pull === "function") {
+      var settled = false;
+      var finish = function (cloudArr, ok) {
+        if (settled) return; settled = true;
+        if (ok && Array.isArray(cloudArr)) {
+          var merged = self._mergeLists(local, cloudArr, binKey);
+          self._setLocal(binKey, merged);
+          cb(merged, true, cloudArr);
+        } else {
+          cb(local, false, local);
+        }
+      };
+      adapter.pull(binKey, finish);
+      setTimeout(function () { finish(local, false); }, 2500);
+    } else {
+      setTimeout(function () { cb(local, true, local); }, 0);
+    }
+  },
+  put: function (binKey, data, cb) {
+    this._setLocal(binKey, data);
+    var adapter = this._adapterNow();
+    if (adapter && typeof adapter.push === "function") {
+      var settled = false;
+      var finish = function (ok) { if (settled) return; settled = true; if (typeof cb === "function") cb(ok); };
+      adapter.push(binKey, data, finish);
+      setTimeout(function () { finish(false); }, 2500);
+    } else {
+      if (typeof cb === "function") setTimeout(function () { cb(true); }, 0);
+    }
+  },
+  syncAll: function (cb) {
+    var adapter = this._adapterNow();
+    if (!adapter) { if (typeof cb === "function") cb(true); return; }
+    var self = this, keys = ["accounts", "technicians", "notices", "audit_log"], pending = keys.length;
+    function done() { pending--; if (pending <= 0 && typeof cb === "function") cb(true); }
+    keys.forEach(function (k) {
+      var snapshot = self._getLocal(k);
+      self.get(k, function (mergedArr, ok, rawArr) {
+        if (!ok) { done(); return; }
+        if (!Array.isArray(rawArr)) rawArr = [];
+        var merged = self._mergeLists(snapshot, rawArr, k);
+        var same = JSON.stringify(merged) === JSON.stringify(rawArr);
+        if (same) done();
+        else self.put(k, merged, function () { done(); });
+      });
+    });
+  },
+  getCurrentUser: function () {
+    try { var raw = localStorage.getItem("rose_current_user"); return raw ? JSON.parse(raw) : null; }
+    catch (e) { return null; }
+  },
+  genId: function () {
+    var ts = Date.now().toString(36);
+    var r1 = Math.random().toString(36).slice(2);
+    var r2 = "";
+    try { r2 = crypto.getRandomValues(new Uint32Array(1))[0].toString(36); }
+    catch (e) { r2 = Math.random().toString(36).slice(2); }
+    return ts + r1 + r2;
+  },
+  _deletedKey: function (binKey) { return 'rose_deleted_' + binKey; },
+  getDeleted: function (binKey) {
+    try { return JSON.parse(localStorage.getItem(this._deletedKey(binKey)) || "[]"); } catch (e) { return []; }
+  },
+  markDeleted: function (binKey, id) {
+    if (!id) return;
+    var d = this.getDeleted(binKey);
+    if (d.indexOf(id) < 0) d.push(id);
+    try { localStorage.setItem(this._deletedKey(binKey), JSON.stringify(d)); } catch (e) {}
+  },
+  unmarkDeleted: function (binKey, id) {
+    var d = this.getDeleted(binKey).filter(function (x) { return x !== id; });
+    try { localStorage.setItem(this._deletedKey(binKey), JSON.stringify(d)); } catch (e) {}
+  }
+};
+
+// 页面加载后如有适配器则静默同步；纯本地模式下直接 no-op（不联网、不弹窗）
+setTimeout(function () { try { JB.syncAll(); } catch (e) {} }, 800);
+
+// 全局错误捕获（保留，便于排查）
+window.onerror = function (m, s, l, c) {
+  try {
+    var d = document.createElement("div");
+    d.style.cssText = "position:fixed;bottom:0;left:0;right:0;background:#c00;color:#fff;font-size:12px;padding:8px;z-index:99999;white-space:pre-wrap;";
+    d.textContent = "页面报错: " + m + " (" + l + ":" + c + ")";
+    (document.body || document.documentElement).appendChild(d);
+  } catch (e) {}
+  return false;
+};
+
+/*
+ * 可选多端同步：在引入本文件之后、页面逻辑之前设置 window.RoseSyncAdapter 即可，
+ * 例如 sync-adapter.js。本地永远优先，后端不可用也不影响本机数据。
+ */
+</script>
+
+  <!-- ☁️ 云端同步内嵌配置：仅供本人使用，请勿把本文件分享给他人 -->
+  <script>
+  /* ============================================================
+   * 把你的 GitHub 令牌填到下面 ROSE_GH_PAT（ghp_ 开头那一串）。
+   * ROSE_GH_GIST 留空 = 本机首次点「连接云端」自动新建；
+   *   想多台设备看同一份数据 → 各设备填【同一个】Gist ID。
+   * 不想内嵌、改用配置页的，可保持原样去 setup-token.html 填写。
+   * ⚠️ 警告：令牌写在文件里，谁拿到本文件谁就能访问你的 GitHub Gist，勿外传。
+   * ============================================================ */
+  var ROSE_GH_PAT = "【在这里填入你的GitHub令牌】";
+  var ROSE_GH_GIST = "7f4dc05ed473a5148763b6b4d23e2c26"; // 默认公开 Gist，首次无需配置即可读
+  </script>
+
+  <title>玫瑰按摩</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #FFF5F7; color: #333; min-height: 100vh; padding-bottom: 60px; }
+    .header { background: linear-gradient(135deg, #C2185B, #E91E63); color: #fff; padding: 16px; text-align: center; font-size: 18px; font-weight: bold; }
+    .section { padding: 16px; max-width: 700px; margin: 0 auto; }
+    .section-title { font-size: 16px; font-weight: bold; color: #C2185B; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    .notice-box { background: #FFF9C4; border-left: 4px solid #FF9800; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; font-size: 14px; line-height: 1.7; }
+    .notice-title { font-weight: bold; margin-bottom: 6px; color: #E65100; }
+    .tech-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
+    .tech-card { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); cursor: pointer; transition: transform .1s; }
+    .tech-card:active { transform: scale(.97); }
+    .tech-card img { width: 100%; height: 160px; object-fit: cover; }
+    .tech-photos { display: flex; gap: 2px; background: #fce4ec; }
+    .tech-photos img { flex: 1; height: 70px; object-fit: cover; }
+    .tech-card-body { padding: 10px 12px; }
+    .tech-name { font-weight: bold; font-size: 15px; color: #C2185B; margin-bottom: 4px; }
+    .tech-meta { font-size: 12px; color: #888; }
+    .tech-price { color: #E91E63; font-size: 14px; font-weight: bold; margin-top: 4px; }
+    .new-badge { background: #4CAF50; color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 20px; margin-left: 6px; vertical-align: middle; }
+    .empty { text-align: center; color: #bbb; padding: 30px; font-size: 14px; }
+    .footer { text-align: center; padding: 20px; font-size: 12px; color: #bbb; }
+    .footer a { color: #C2185B; text-decoration: none; }
+    
+    .top-bar { display: flex; gap: 10px; padding: 12px 16px; max-width: 700px; margin: 0 auto; flex-wrap: wrap; }
+    .top-btn { flex: 1; min-width: 80px; background: #fff; border: 1.5px solid #f0f0f0; border-radius: 10px; padding: 10px 8px; text-align: center; font-size: 13px; cursor: pointer; text-decoration: none; color: #333; }
+    .top-btn:active { background: #fce4ec; }
+    .search-bar { padding: 4px 16px 0; max-width: 700px; margin: 0 auto; }
+    .search-bar input { width: 100%; padding: 12px 16px; border: 1.5px solid #f0f0f0; border-radius: 24px; font-size: 15px; outline: none; background: #fff; box-sizing: border-box; }
+    .search-bar input:focus { border-color: #E91E63; }
+    .search-tip { text-align: center; font-size: 13px; color: #C2185B; padding: 8px 16px; max-width: 700px; margin: 0 auto; }
+    .toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(0,0,0,.8); color: #fff; padding: 12px 28px; border-radius: 10px; font-size: 14px; z-index: 99999; pointer-events: none; white-space: nowrap; }
+  .cloud-status { font-size: 12px; color: #2E7D32; text-align: center; padding: 4px 8px; line-height: 1.5; word-break: break-all; }
+  .cloud-status a { color: #1B5E20; }
+  </style>
+
+  <!-- PWA 配置 -->
+  <link rel="manifest" href="manifest.json?v=20260817">
+  <meta name="theme-color" content="#C2185B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%23C2185B' width='192' height='192' rx='24'/%3E%3Ctext x='96' y='120' font-size='80' text-anchor='middle'%3E🌹%3C/text%3E%3C/svg%3E">
+<script>
+window.imgErr = function(img) {
+  try {
+    img.onerror = null;
+    img.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 280 220'><rect width='280' height='220' fill='%23fce4ec'/><text x='140' y='125' font-size='40' text-anchor='middle' fill='%23C2185B'>暂无图片</text></svg>";
+  } catch (e) {}
+};
+</script>
+</head>
+<body>
+  <div class="header">🌹 玫瑰按摩</div>
+
+  <div class="top-bar">
+    <a class="top-btn" href="login.html?v=20260817">👤 登录</a>
+    <a class="top-btn" href="register.html?v=20260817">📝 注册</a>
+    <a class="top-btn" href="profile.html?v=20260817">💆 我的</a>
+    <a class="top-btn" id="cloudBtn" onclick="toggleCloud()">☁️ 连接云端</a>
+    </div>
+    <div id="cloudStatus" class="cloud-status"></div>
+
+  <div class="search-bar">
+    <input id="searchInput" type="search" placeholder="🔍 搜索 技师名字 / 服务地址 / 服务项目" oninput="doSearch(this.value)" />
+  </div>
+  <div id="searchTip" class="search-tip" style="display:none;"></div>
+
+  <div class="section">
+    <div class="section-title">📢 公告</div>
+    <div id="noticeBox">
+      <div class="notice-box">
+        <div class="notice-title">欢迎使用玫瑰按摩平台</div>
+        <div style="color:#555;white-space:pre-wrap;line-height:1.6;">点击右上角「登录/注册」提交技师资料，审核通过后即可在首页展示。</div>
+      </div>
+    </div>
+
+    <div class="section-title" id="newSectionTitle">🌟 新人上线</div>
+    <div id="newBox" class="tech-grid"></div>
+
+    <div class="section-title">💆 技师展示</div>
+    <div id="techBox" class="tech-grid"></div>
+  </div>
+
+  <div class="footer">
+    开发者联系电话：<a href="tel:13913627704">13913627704</a>
+  </div>
+
+  <script>
+function toast(msg) {
+  var el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(function() { el.remove(); }, 2200);
+}
+
+function renderNotice(list) {
+  var box = document.getElementById('noticeBox');
+  if (!list || list.length === 0) return;
+  var sorted = list.slice().sort(function(a,b){ return (b.time||0) - (a.time||0); });
+  var n = sorted[0];
+  var photosHtml = '';
+  if (n.photos && n.photos.length > 0) {
+    photosHtml = '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:10px;">';
+    for (var pi = 0; pi < n.photos.length; pi++) {
+      photosHtml += '<img src="' + n.photos[pi] + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;" onerror="imgErr(this)">';
+    }
+    photosHtml += '</div>';
+  }
+  box.innerHTML = '<div class="notice-box"><div class="notice-title">' + escapeHtml(n.title) + '</div><div style="color:#555;white-space:pre-wrap;line-height:1.6;">' + escapeHtml(n.content) + '</div>' + photosHtml + '</div>';
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
+function renderTechs(list, boxId, isNew) {
+  var box = document.getElementById(boxId);
+  var now = Date.now();
+  var sevenDays = 7 * 24 * 60 * 60 * 1000;
+  var filtered = list.filter(function(t) {
+    if (t.status !== '已通过') return false;
+    if (isNew) {
+      // 新人上线：审核通过 7 天内
+      if (!t.auditTime) return false;
+      return (now - t.auditTime) <= sevenDays;
+    } else {
+      // 技师展示：所有已通过（不限时间）
+      return !!t.auditTime;
+    }
+  });
+  
+  // 置顶排序：有 top 字段的技师排最前（置顶时间倒序），其余保持原顺序
+  filtered.sort(function(a, b) {
+    var at = a.top || 0, bt = b.top || 0;
+    if (at && bt) return bt - at;
+    if (at) return -1;
+    if (bt) return 1;
+    return 0;
+  });
+  if (filtered.length === 0) {
+    box.innerHTML = '<div class="empty">' + (isNew ? '暂无新人上线' : '暂无技师') + '</div>';
+    return;
+  }
+  var html = '';
+  for (var i = 0; i < filtered.length; i++) {
+    var t = filtered[i];
+    var techKey = t.id || t.accountId || t.account || '';
+    // 判断是否新人（7天内审核通过）
+    var isRecent = t.auditTime && ((now - t.auditTime) <= sevenDays);
+    // 渲染所有照片（最多3张）
+    var photosHtml = '';
+    if (t.photos && t.photos.length > 0) {
+      var shown = t.photos.slice(0, 3);
+      for (var pi = 0; pi < shown.length; pi++) {
+        photosHtml += '<img src="' + escapeHtml(shown[pi]) + '" onerror="imgErr(this)">';
+      }
+    } else {
+      photosHtml = '<div style="flex:1;height:70px;background:#fce4ec;display:flex;align-items:center;justify-content:center;color:#C2185B;font-size:28px;">💆</div>' +
+                  '<div style="flex:1;height:70px;background:#fce4ec;display:flex;align-items:center;justify-content:center;color:#C2185B;font-size:28px;">💆</div>' +
+                  '<div style="flex:1;height:70px;background:#fce4ec;display:flex;align-items:center;justify-content:center;color:#C2185B;font-size:28px;">💆</div>';
+    }
+    var img = '<div class="tech-photos">' + photosHtml + '</div>';
+    var badge = (isNew && isRecent) ? '<span class="new-badge">新</span>' : '';
+    html += '<div class="tech-card" onclick="location.href=\'technician-detail.html?v=20260817&id=' + encodeURIComponent(techKey) + '\'">' +
+      img +
+      '<div class="tech-card-body">' +
+        '<div class="tech-name">' + escapeHtml(t.name) + badge + '</div>' +
+        '<div class="tech-meta">📍 ' + escapeHtml(t.address || '未填') + '</div>' +
+        '<div class="tech-meta">📞 ' + escapeHtml(t.phone || '未填') + '</div>' +
+        '<div class="tech-price">¥' + escapeHtml(t.price || '?') + ' / 次</div>' +
+      '</div>' +
+    '</div>';
+  }
+  box.innerHTML = html;
+}
+
+var allTechs = [];
+
+function doSearch(q) {
+  q = (q || '').trim().toLowerCase();
+  var tip = document.getElementById('searchTip');
+  var newTitle = document.getElementById('newSectionTitle');
+  var newBox = document.getElementById('newBox');
+  if (!q) {
+    if (tip) tip.style.display = 'none';
+    if (newTitle) newTitle.style.display = '';
+    renderTechs(allTechs, 'newBox', true);
+    renderTechs(allTechs, 'techBox', false);
+    return;
+  }
+  var filtered = (allTechs || []).filter(function(t) {
+    if (!t || t.status !== '已通过') return false;
+    var hay = [t.name, t.address, t.services].join(' ').toLowerCase();
+    return hay.indexOf(q) >= 0;
+  });
+  if (newTitle) newTitle.style.display = 'none';
+  if (newBox) newBox.innerHTML = '';
+  renderTechs(filtered, 'techBox', false);
+  if (tip) {
+    tip.style.display = 'block';
+    tip.textContent = filtered.length > 0 ? ('🔍 找到 ' + filtered.length + ' 位匹配技师') : '未找到匹配的技师，换个关键词试试';
+  }
+}
+
+function getEmbeddedPat() {
+  var p = (typeof ROSE_GH_PAT !== 'undefined') ? ROSE_GH_PAT : '';
+  if (!p || p.indexOf('在此粘贴') >= 0) return '';
+  return String(p).trim();
+}
+function updateCloudStatus(connected, id) {
+  var btn = document.getElementById('cloudBtn');
+  var st = document.getElementById('cloudStatus');
+  if (!connected) {
+    if (btn) { btn.textContent = '☁️ 连接云端'; btn.style.borderColor = '#f0f0f0'; btn.style.color = '#333'; }
+    if (st) st.innerHTML = '';
+    return;
+  }
+  if (btn) { btn.textContent = '☁️ 已连接'; btn.style.borderColor = '#4CAF50'; btn.style.color = '#2E7D32'; }
+  if (st) {
+    if (id) st.innerHTML = '☁️ 已连接云端 · Gist ID: <b>' + id + '</b> · <a href="https://gist.github.com" target="_blank" rel="noopener">在 GitHub 查看</a>';
+    else st.innerHTML = '☁️ 已连接云端';
+  }
+}
+function connectCloud() {
+  var pat = getEmbeddedPat();
+  if (!pat) { toast('请先在 index.html 顶部把 ROSE_GH_PAT 改成你的 GitHub 令牌'); return; }
+  try { localStorage.setItem('rose_gh_token', pat); } catch (e) {}
+  var g = (typeof ROSE_GH_GIST !== 'undefined') ? String(ROSE_GH_GIST || '').trim() : '';
+  try { if (g) localStorage.setItem('rose_gh_gist', g); else localStorage.removeItem('rose_gh_gist'); } catch (e) {}
+  if (!window.RoseSyncAdapter) {
+    var s = document.createElement('script');
+    s.src = 'sync-adapter.js?t=' + Date.now();
+    document.body.appendChild(s);
+  }
+  setTimeout(function () {
+    function goSync() { try { if (window.JB && JB.syncAll) JB.syncAll(); } catch (e) {} }
+    if (window.RoseSyncResolve) {
+      window.RoseSyncResolve(function (gid) {
+        goSync();
+        var shownId = gid || localStorage.getItem('rose_gh_gist');
+        updateCloudStatus(true, shownId);
+        toast('☁️ 已连接云端 · Gist: ' + (shownId || '?'));
+      });
+    } else {
+      goSync();
+      updateCloudStatus(true);
+      toast('☁️ 已连接云端，可云端注册 / 访问');
+    }
+  }, 700);
+}
+function disconnectCloud() {
+  ['rose_gh_token', 'rose_gh_gist', 'rose_gh_api_base'].forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+  updateCloudStatus(false);
+  toast('已断开云端（本地数据仍在）');
+}
+function toggleCloud() {
+  if (window.RoseSyncAdapter && localStorage.getItem('rose_gh_token')) disconnectCloud();
+  else connectCloud();
+}
+(function () { if (localStorage.getItem('rose_gh_token')) updateCloudStatus(true, localStorage.getItem('rose_gh_gist')); })();
+
+function init() {
+  var loaded = 0;
+  var techs = [];
+  var notices = [];
+  function done() {
+    if (++loaded === 2) {
+      renderNotice(notices);
+      renderTechs(techs, 'newBox', true);
+      renderTechs(techs, 'techBox', false);
+    }
+  }
+  JB.get('technicians', function(data) {
+    allTechs = Array.isArray(data) ? data : [];
+    techs = allTechs;
+    done();
+  });
+  JB.get('notices', function(data) {
+    notices = Array.isArray(data) ? data : [];
+    done();
+  });
+}
+
+init();
+</script>
+
+<script>
+// 注册 Service Worker (PWA)
+if ('serviceWorker' in navigator) {
+  try {
+    navigator.serviceWorker.register('sw.js?v=20260817')
+      .then(function(reg) { console.log('[PWA] SW 注册成功:', reg.scope); })
+      .catch(function(err) { console.log('[PWA] SW 注册失败:', err); });
+  } catch (e) { console.warn('[PWA] SW 不可用（沙箱/隐私模式）', e); }
+}
+</script>
+<div style="text-align:center;font-size:11px;color:#999;padding:12px 0 20px;">v2.2 · 限速修复版 · 2026-08-15</div>
+<script src="sync-adapter.js"></script>
+</body>
+</html>

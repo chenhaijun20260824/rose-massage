@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>云端同步设置 - 玫瑰按摩</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #FFF5F7; color: #333; min-height: 100vh; padding: 20px; line-height: 1.6; }
+.container { max-width: 540px; margin: 0 auto; }
+.header { background: linear-gradient(135deg, #C2185B, #E91E63); color: #fff; padding: 18px; text-align: center; border-radius: 12px; margin-bottom: 18px; font-size: 18px; font-weight: 700; }
+.card { background: #fff; border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+.step-title { font-size: 15px; font-weight: 700; color: #C2185B; margin-bottom: 8px; }
+p { font-size: 14px; color: #444; }
+label { display: block; font-size: 13px; color: #666; margin: 14px 0 6px; font-weight: 600; }
+input { width: 100%; padding: 11px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+input:focus { border-color: #C2185B; outline: none; }
+button { margin-top: 14px; padding: 13px 16px; border: none; border-radius: 8px; background: #C2185B; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; }
+button.ghost { background: #eee; color: #666; }
+button.primary { background: linear-gradient(135deg, #C2185B, #E91E63); }
+.steps-inline { background: #FFF0F4; border-radius: 8px; padding: 12px 14px; margin-top: 12px; }
+.steps-inline div { font-size: 13px; color: #555; margin: 5px 0; }
+.tip { font-size: 12px; color: #999; margin-top: 8px; }
+.warn { font-size: 12px; color: #E65100; background: #FFF3E0; padding: 8px 10px; border-radius: 6px; margin-top: 6px; }
+.status { font-size: 14px; padding: 12px; border-radius: 8px; margin-top: 14px; display: none; }
+.status.ok { display: block; background: #E8F5E9; color: #2E7D32; }
+.status.bad { display: block; background: #FFEBEE; color: #C62828; }
+#info { font-size: 13px; color: #888; margin-top: 10px; }
+.back-link { text-align: center; margin-top: 16px; }
+.back-link a { color: #C2185B; text-decoration: none; font-weight: 600; }
+code { background: #f5f5f5; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+a { color: #C2185B; }
+</style>
+</head>
+<body>
+<div class="container">
+<div class="header">☁️ 云端同步设置（多设备共享数据）</div>
+
+<div class="card">
+  <div class="step-title">📌 这是什么？</div>
+  <p>开启后，你在一台手机/电脑上添加的按摩技师、审核记录，会自动同步到另一台设备，不用重复录入。数据存在<strong>你自己的 GitHub 私密仓库</strong>里，别人看不到。</p>
+</div>
+
+<div class="card">
+  <div class="step-title">第 1 步：去 GitHub 领一把「钥匙」（只需做一次）</div>
+  <p class="tip">这把「钥匙」叫 PAT（个人访问令牌），它让本应用能读写你的云端数据。点击下方按钮，会自动打开 GitHub 的创建页面。</p>
+  <button class="primary" onclick="window.open('https://github.com/settings/tokens/new','_blank')">🔑 点我去 GitHub 创建令牌</button>
+  <div class="steps-inline">
+    <div>① 页面打开后，给令牌起个名字（随便写，如「玫瑰按摩同步」）</div>
+    <div>② 找到权限区，<b>勾选 gist</b>（关键！不勾就无法同步）</div>
+    <div>③ 拉到最下面点 <b>Generate token（生成令牌）</b></div>
+    <div>④ 生成后显示一长串字符（<code>ghp_</code> 开头），<b>立刻复制</b>（只显示这一次！）</div>
+  </div>
+  <p class="tip">📖 看不懂每一步点哪里？点这里看 <a href="pat-guide.html">图文详细指引 →</a></p>
+</div>
+
+<div class="card">
+  <div class="step-title">第 2 步：把钥匙粘到这里</div>
+  <label>GitHub 令牌 (PAT)</label>
+  <input id="pat" type="password" placeholder="粘贴 ghp_... 或 github_pat_... 那串字符" autocomplete="off" oninput="checkPat()">
+  <div id="patWarn" class="warn" style="display:none">⚠️ 这个格式不太像 GitHub 令牌（应以 ghp_ 或 github_pat_ 开头），请检查是否复制完整、前后没空格。</div>
+
+  <label>Gist ID（多设备共用时填，可选）</label>
+  <input id="gist" type="text" placeholder="留空 = 首次同步自动创建">
+  <div class="tip">想手机和电脑看<strong>同一份</strong>数据：先在手机上创建（这里留空），成功后把下面显示的 Gist ID 抄到电脑上、填成一样即可。各填各的 = 各用各的数据。</div>
+
+  <button class="primary" onclick="save()">💾 保存并测试连接</button>
+  <button class="ghost" onclick="disconnect()">断开同步（恢复纯本地）</button>
+  <div id="info"></div>
+  <div id="status" class="status"></div>
+</div>
+<div class="back-link"><a href="index.html">← 返回首页</a></div>
+</div>
+<script>
+function setStatus(msg, kind) {
+  var el = document.getElementById('status');
+  el.className = 'status ' + kind;
+  el.textContent = msg;
+}
+function checkPat() {
+  var v = document.getElementById('pat').value.trim();
+  var warn = document.getElementById('patWarn');
+  if (v && !(v.indexOf('ghp_') === 0 || v.indexOf('github_pat_') === 0)) warn.style.display = 'block';
+  else warn.style.display = 'none';
+}
+function refreshInfo() {
+  var gid = localStorage.getItem('rose_gh_gist');
+  document.getElementById('info').textContent = gid ? ('当前 Gist ID: ' + gid + '（多设备填这个就共用同一份数据）') : '尚未创建 Gist（首次同步会自动创建）';
+}
+function save() {
+  var pat = document.getElementById('pat').value.trim();
+  if (!pat) { setStatus('请先填写 GitHub 令牌（第 1 步去创建并复制）', 'bad'); return; }
+  localStorage.setItem('rose_gh_token', pat);
+  var g = document.getElementById('gist').value.trim();
+  if (g) localStorage.setItem('rose_gh_gist', g); else localStorage.removeItem('rose_gh_gist');
+  var b = document.getElementById('base').value.trim();
+  if (b) localStorage.setItem('rose_gh_api_base', b); else localStorage.removeItem('rose_gh_api_base');
+  test();
+}
+function test() {
+  var pat = localStorage.getItem('rose_gh_token');
+  var base = localStorage.getItem('rose_gh_api_base') || 'https://api.github.com';
+  setStatus('正在测试连接...', 'ok');
+  fetch(base + '/user', {
+    headers: { 'Authorization': 'Bearer ' + pat, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
+  }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, status: r.status, d: d }; }); })
+    .then(function (res) {
+      if (res.ok) {
+        var gid = localStorage.getItem('rose_gh_gist');
+        setStatus('✅ 连接成功！已登录 GitHub：' + (res.d.login || '') + (gid ? '（Gist ID: ' + gid + '）' : '（首次同步将自动创建 Gist，稍后回来抄 ID）'), 'ok');
+        refreshInfo();
+      } else if (res.status === 401) {
+        setStatus('❌ 令牌无效：请重新复制（注意别漏字符、前后别带空格）。', 'bad');
+      } else if (res.status === 403) {
+        setStatus('❌ 权限不足或 GitHub 限流：确认创建令牌时勾选了 gist；若刚创建请等 1~2 分钟再试。', 'bad');
+      } else {
+        setStatus('❌ 出错了：' + ((res.d && res.d.message) || '未知错误'), 'bad');
+      }
+    }).catch(function (e) { setStatus('❌ 网络错误（确认能访问 ' + base + '）：' + e.message, 'bad'); });
+}
+function disconnect() {
+  ['rose_gh_token', 'rose_gh_gist', 'rose_gh_api_base'].forEach(function (k) { localStorage.removeItem(k); });
+  document.getElementById('pat').value = '';
+  document.getElementById('gist').value = '';
+  document.getElementById('base').value = '';
+  setStatus('已断开同步，恢复纯本地模式（数据仍在，只是不跨设备）。', 'ok');
+  refreshInfo();
+}
+(function () {
+  var pat = localStorage.getItem('rose_gh_token');
+  if (pat) document.getElementById('pat').value = pat;
+  var g = localStorage.getItem('rose_gh_gist');
+  if (g) document.getElementById('gist').value = g;
+  var b = localStorage.getItem('rose_gh_api_base');
+  if (b) document.getElementById('base').value = b;
+  refreshInfo();
+})();
+</script>
+</body>
+</html>
