@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图文指引：创建 GitHub 令牌 - 玫瑰按摩</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #FFF5F7; color: #333; padding: 20px; line-height: 1.7; }
+.container { max-width: 600px; margin: 0 auto; }
+.header { background: linear-gradient(135deg, #C2185B, #E91E63); color: #fff; padding: 20px; text-align: center; border-radius: 12px; margin-bottom: 20px; }
+.header h1 { font-size: 19px; }
+.header p { font-size: 13px; opacity: .9; margin-top: 6px; }
+.step { background: #fff; border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.08); display: flex; gap: 14px; }
+.num { flex: 0 0 38px; height: 38px; border-radius: 50%; background: #C2185B; color: #fff; font-size: 18px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.body { flex: 1; }
+.body h2 { font-size: 15px; color: #C2185B; margin-bottom: 6px; }
+.body p { font-size: 14px; color: #444; }
+.shot { margin-top: 10px; border: 2px dashed #E1B0C0; border-radius: 8px; background: #FFF8FA; color: #B07090; font-size: 12px; text-align: center; padding: 22px 10px; }
+.note { background: #FFF3E0; border-left: 4px solid #FF9800; padding: 12px 14px; border-radius: 6px; font-size: 13px; color: #795548; margin-bottom: 16px; }
+.key { display: inline-block; background: #FCE4EC; color: #C2185B; font-weight: 700; padding: 1px 7px; border-radius: 4px; font-size: 13px; }
+.back { text-align: center; margin-top: 8px; }
+.back a { color: #C2185B; text-decoration: none; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+<div class="header">
+  <h1>📘 图文指引：创建 GitHub 令牌</h1>
+  <p>只需做一次，之后手机和电脑就能共享同一份按摩数据</p>
+</div>
+
+<div class="note">⚠️ 小提示：GitHub 账号免费注册（用邮箱即可）。如果还没有账号，先去 github.com 注册一个，再回到这里。</div>
+
+<div class="step">
+  <div class="num">1</div>
+  <div class="body">
+    <h2>打开令牌创建页</h2>
+    <p>在手机或电脑浏览器里，打开这个网址：<br><span class="key">github.com/settings/tokens/new</span><br>（也可以：GitHub 右上角头像 → Settings → 左侧 Developer settings → Personal access tokens → Tokens (classic) → Generate new token）。</p>
+    <div class="shot">【截图位置】GitHub 令牌创建页面（Note / Expiration / Select scopes 区域）</div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">2</div>
+  <div class="body">
+    <h2>给令牌起个名字</h2>
+    <p>在 <b>Note</b> 那一栏，随便写一个名字，比如「玫瑰按摩同步」。方便以后认得它。</p>
+    <div class="shot">【截图位置】Note 输入框填写示例</div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">3</div>
+  <div class="body">
+    <h2>勾选 gist 权限（最关键的一步）</h2>
+    <p>往下找到权限列表，<b>勾选 <span class="key">gist</span></b> 这一项。只有勾了它，应用才能读写你的云端数据。其他项都不用勾。</p>
+    <div class="shot">【截图位置】Select scopes 里 gist 被勾选的样子</div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">4</div>
+  <div class="body">
+    <h2>生成令牌</h2>
+    <p>拉到页面最下面，点绿色按钮 <b>Generate token（生成令牌）</b>。</p>
+    <div class="shot">【截图位置】绿色的 Generate token 按钮</div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">5</div>
+  <div class="body">
+    <h2>复制那串字符（只显示这一次！）</h2>
+    <p>生成后会显示一长串字符，通常以 <span class="key">ghp_</span> 开头。立刻点「复制」按钮复制下来。<br>⚠️ 这串字符<b>关掉页面后就再也看不到了</b>，所以现在就复制好。</p>
+    <div class="shot">【截图位置】生成后的令牌字符串（已打码）</div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="num">6</div>
+  <div class="body">
+    <h2>粘回应用，完成</h2>
+    <p>回到应用的「云端同步设置」页面（setup-token.html），把复制的字符粘贴到「GitHub 令牌」框里，点「保存并测试连接」。显示 ✅ 就成功了！</p>
+    <div class="shot">【截图位置】应用里粘贴令牌并测试连接成功</div>
+  </div>
+</div>
+
+<div class="note">💡 多设备共用：第一台设备（比如手机）填令牌后留空 Gist ID，会自动创建；成功后页面会显示一个 Gist ID，把它抄到第二台设备（比如电脑）的 Gist ID 框里，两台就共享同一份数据了。</div>
+
+<div class="back"><a href="setup-token.html">← 返回云端同步设置</a></div>
+</div>
+</body>
+</html>
