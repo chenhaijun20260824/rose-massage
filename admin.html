@@ -461,6 +461,11 @@ window.imgErr = function(img) {
 </div>
 </div>
 <div id="adminView" style="display:none;">
+  <div style="text-align:center;padding:8px;background:#f0f8f0;border-bottom:1px solid #d0e0d0;">
+    <button id="cloudBtn" onclick="toggleCloud()" style="padding:6px 16px;border:1px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-size:14px;">☁️ 连接云端</button>
+    <div id="cloudStatus" class="cloud-status" style="font-size:12px;color:#2E7D32;margin-top:4px;"></div>
+  </div>
+
 <div class="container">
 <div class="info-bar" id="infoBar">☁️ 正在连接云端...</div>
 <div class="tabs">
@@ -902,25 +907,6 @@ if (_adminLogged) {
 <script>
 // 注册 Service Worker (PWA)
 
-function adminConnectCloud() {
-  var pat = (typeof ROSE_GH_PAT !== 'undefined' && ROSE_GH_PAT && ROSE_GH_PAT.indexOf('在这里') < 0) ? ROSE_GH_PAT : '';
-  if (!pat || !pat.trim()) {
-    pat = prompt('请输入你的 GitHub Personal Access Token（限 gist 权限）：');
-    if (!pat || !pat.trim()) { if (window.toast) toast('未输入令牌，取消连接'); return; }
-    pat = pat.trim();
-    if (pat.indexOf('ghp_') !== 0 && pat.indexOf('github_pat_') !== 0) { if (window.toast) toast('令牌格式不对，请输入 ghp_ 开头的 Token'); return; }
-  }
-  try { localStorage.setItem('rose_gh_token', pat); } catch (e) {}
-  try { if (typeof ROSE_GH_GIST !== 'undefined' && ROSE_GH_GIST) localStorage.setItem('rose_gh_gist', ROSE_GH_GIST); } catch (e) {}
-  var st = document.getElementById('adminCloudStatus');
-  if (st) st.textContent = '连接中...';
-  setTimeout(function () {
-    try { if (window.JB && JB.syncAll) JB.syncAll(); } catch (e) {}
-    if (st) st.innerHTML = '✅ 已连接云端 · Gist: ' + ((typeof ROSE_GH_GIST !== 'undefined' && ROSE_GH_GIST) || '?');
-    try { setCloudBadge(true, '云端已连接'); } catch (e) {}
-    if (window.toast) toast('✅ 已连接云端');
-  }, 600);
-}
 if ('serviceWorker' in navigator) {
   try {
     navigator.serviceWorker.register('sw.js?v=20260824')
