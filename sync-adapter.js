@@ -22,7 +22,7 @@
   var FILE = 'rose-sync.json';
   var BINS = ['accounts', 'technicians', 'notices', 'audit_log'];
   var DESCRIPTION = 'rose-massage 本地优先同步存储（公开版）';
-  var DEFAULT_GIST_ID = '7f4dc05ed473a5148763b6b4d23e2c26'; // 公开数据 Gist，所有设备共用
+  var DEFAULT_GIST_ID = '335732b242ed305912b3a3d5c6ce9dc1'; // 公开数据 Gist，所有设备共用
 
   function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
