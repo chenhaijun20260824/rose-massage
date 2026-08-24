@@ -890,6 +890,19 @@ if ('serviceWorker' in navigator) {
       .catch(function(err) { console.log('[PWA] SW 注册失败:', err); });
   } catch (e) { console.warn('[PWA] SW 不可用（沙箱/隐私模式）', e); }
 }
+// 自动同步：后台开着且停留在「待审核」标签时，每 25 秒拉取云端，
+// 确保其他设备注册的技师即时出现在手机审核列表，无需手动刷新
+setInterval(function () {
+  try {
+    var av = document.getElementById('adminView');
+    if (!av || av.style.display === 'none') return;
+    if (document.visibilityState === 'hidden') return;
+    var rt = document.getElementById('tabReview');
+    if (!rt || !rt.classList.contains('active')) return;
+    if (window.JB && JB.syncAll) JB.syncAll();
+    loadAll();
+  } catch (e) {}
+}, 25000);
 </script>
 </body>
 </html>
