@@ -548,19 +548,23 @@ function formatTime(ts) {
 }
 
 function setCloudBadge(ok, text) {
-  var badge = document.getElementById('cloudBadge');
-  var infoBar = document.getElementById('infoBar');
-  if (ok) {
-    badge.style.display = 'inline-block';
-    badge.className = 'cloud-badge';
-    badge.textContent = '云端已连接';
-    infoBar.innerHTML = '☁️ 云端已连接 | 数据多设备同步';
-  } else {
-    badge.style.display = 'inline-block';
-    badge.className = 'cloud-badge offline';
-    badge.textContent = '本地模式';
-    infoBar.innerHTML = '⚠️ 云端连接失败，使用本地数据（请检查网络）';
-  }
+  try {
+    var badge = document.getElementById('cloudBadge');
+    if (badge) {
+      badge.style.display = 'inline-block';
+      badge.className = ok ? 'cloud-badge' : 'cloud-badge offline';
+      badge.textContent = text || (ok ? '云端已连接' : '本地模式');
+    }
+    var infoBar = document.getElementById('infoBar');
+    if (infoBar) {
+      infoBar.innerHTML = ok ? '☁️ 云端已连接 | 数据多设备同步' : '⚠️ 云端连接失败，使用本地数据（请检查网络）';
+    }
+    var s2 = document.getElementById('adminCloudStatus');
+    if (s2) {
+      s2.textContent = ok ? '已连接' : '本地模式';
+      s2.style.color = ok ? '#2E7D32' : '#FF9800';
+    }
+  } catch (e) { console.warn('[setCloudBadge]', e); }
 }
 
 function adminLogin() {
