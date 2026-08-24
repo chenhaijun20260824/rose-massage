@@ -29,6 +29,13 @@
 
   var token = lsGet(TOKEN_KEY);
   var base = lsGet(BASE_KEY) || 'https://api.github.com';
+  // 迁移：清掉旧账号遗留的不可写 Gist ID，强制改用新账号共享 Gist
+  (function () {
+    var cached = lsGet(GIST_KEY);
+    if (cached && cached !== DEFAULT_GIST_ID) {
+      try { localStorage.removeItem(GIST_KEY); } catch (e) {}
+    }
+  })();
   var gistId = lsGet(GIST_KEY) || DEFAULT_GIST_ID; // 首次无 localStorage 则用默认 Gist（公开可读）
   var hasToken = !!(token && token.trim());
 
