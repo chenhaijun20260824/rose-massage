@@ -503,8 +503,13 @@ function doRegister() {
     }
     list.push(newUser);
     JB.put('accounts', list, function(ok) {
-      toast('注册成功 ✓');
-      setTimeout(function() { location.href='profile.html?v=20260817'; }, 600);
+      if (ok) {
+        toast('注册成功 ✓');
+      } else {
+        // 云端写入失败：多半是没连云端（没输 Token）或网络不通
+        toast('⚠️ 云端保存失败：请先回首页点「☁️ 连接云端」再注册');
+      }
+      setTimeout(function() { location.href='profile.html?v=20260824'; }, 600);
     });
   });
 }
@@ -513,7 +518,7 @@ function doRegister() {
 <script>
 // 注册 Service Worker (PWA)
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js?v=20260824')
+  navigator.serviceWorker.register('sw.js?v=20260824b')
     .then(function(reg) { console.log('[PWA] SW 注册成功:', reg.scope); })
     .catch(function(err) { console.log('[PWA] SW 注册失败:', err); });
 }
