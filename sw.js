@@ -1,5 +1,5 @@
 // 玫瑰按摩 - Service Worker (PWA 离线支持)
-const CACHE_NAME = 'rose-massage-v2';
+const CACHE_NAME = 'rose-massage-v3';
 const urlsToCache = [
   '/rose-massage/',
   '/rose-massage/index.html',
