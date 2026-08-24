@@ -1,0 +1,23 @@
+{
+  "name": "玫瑰按摩·管理后台",
+  "short_name": "按摩后台",
+  "description": "玫瑰按摩技师审核管理后台",
+  "start_url": "/rose-massage/admin.html",
+  "scope": "/rose-massage/",
+  "display": "standalone",
+  "background_color": "#1B5E20",
+  "theme_color": "#2E7D32",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%232E7D32' width='192' height='192' rx='24'/%3E%3Ctext x='96' y='120' font-size='90' text-anchor='middle'%3E%F0%9F%9B%A1%EF%B8%8F%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect fill='%232E7D32' width='512' height='512' rx='48'/%3E%3Ctext x='256' y='320' font-size='240' text-anchor='middle'%3E%F0%9F%9B%A1%EF%B8%8F%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
