@@ -397,7 +397,13 @@ function updateCloudStatus(connected, id) {
 }
 function connectCloud() {
   var pat = getEmbeddedPat();
-  if (!pat) { toast('请先在 index.html 顶部把 ROSE_GH_PAT 改成你的 GitHub 令牌'); return; }
+  if (!pat) {
+    pat = prompt('请输入你的 GitHub Personal Access Token（限 gist 权限）：');
+    if (!pat || !pat.trim()) { toast('未输入令牌，取消连接'); return; }
+    pat = pat.trim();
+    if (pat.indexOf('ghp_') !== 0 && pat.indexOf('github_pat_') !== 0) { toast('令牌格式不对，请输入 ghp_ 开头的 Token'); return; }
+    try { localStorage.setItem('rose_gh_token', pat); } catch(e){}
+  }
   try { localStorage.setItem('rose_gh_token', pat); } catch (e) {}
   var g = (typeof ROSE_GH_GIST !== 'undefined') ? String(ROSE_GH_GIST || '').trim() : '';
   try { if (g) localStorage.setItem('rose_gh_gist', g); else localStorage.removeItem('rose_gh_gist'); } catch (e) {}
