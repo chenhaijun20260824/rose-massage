@@ -464,7 +464,13 @@ window.imgErr = function(img) {
   
 <div class="toolbar">
 <button class="btn btn-sm btn-ghost" onclick="loadAll()">🔄 刷新</button>
+</div><div class="tabs" style="display:flex;border-bottom:2px solid #e0e0e0;margin-bottom:16px;background:#fafafa;">
+  <div id="tabReview" class="tab active" onclick="switchAdminTab('review')" style="padding:12px 20px;cursor:pointer;font-weight:600;border-bottom:3px solid transparent;margin-bottom:-2px;color:#666;">待审核</div>
+  <div id="tabHistory" class="tab" onclick="switchAdminTab('history')" style="padding:12px 20px;cursor:pointer;font-weight:600;border-bottom:3px solid transparent;margin-bottom:-2px;color:#666;">审核记录</div>
+  <div id="tabAll" class="tab" onclick="switchAdminTab('all')" style="padding:12px 20px;cursor:pointer;font-weight:600;border-bottom:3px solid transparent;margin-bottom:-2px;color:#666;">全部技师</div>
+  <div id="tabNotice" class="tab" onclick="switchAdminTab('notice')" style="padding:12px 20px;cursor:pointer;font-weight:600;border-bottom:3px solid transparent;margin-bottom:-2px;color:#666;">公告</div>
 </div>
+
 <div id="reviewPanel"><div id="pendingList"><div class="loading">加载中...</div></div></div>
 <div id="historyPanel" style="display:none;"><div id="historyList"><div class="loading">加载中...</div></div></div>
 <div id="allPanel" style="display:none;"><div id="allList"><div class="loading">加载中...</div></div></div>
@@ -515,6 +521,25 @@ function escapeHtml(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
+function switchAdminTab(name) {
+  try {
+    var panels = { review:'reviewPanel', history:'historyPanel', all:'allPanel', notice:'noticePanel' };
+    var tabs = { review:'tabReview', history:'tabHistory', all:'tabAll', notice:'tabNotice' };
+    Object.keys(panels).forEach(function(k){
+      var p = document.getElementById(panels[k]);
+      if (p) p.style.display = (k === name) ? 'block' : 'none';
+      var t = document.getElementById(tabs[k]);
+      if (t) {
+        if (k === name) { t.classList.add('active'); t.style.color = '#c2185b'; t.style.borderBottomColor = '#c2185b'; }
+        else { t.classList.remove('active'); t.style.color = '#666'; t.style.borderBottomColor = 'transparent'; }
+      }
+    });
+    if (name === 'all' && typeof loadAllTechs === 'function') loadAllTechs();
+    if (name === 'history' && typeof loadHistory === 'function') loadHistory();
+    if (name === 'notice' && typeof loadNotices === 'function') loadNotices();
+  } catch (e) { console.log('switchAdminTab err', e); }
+}
+
 
 function formatTime(ts) {
   if (!ts) return '';
