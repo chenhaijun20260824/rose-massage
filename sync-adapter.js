@@ -108,7 +108,24 @@
   // 写入 gist 全部 bins（需认证 PATCH）
   function writeAll(obj, cb) {
     if (!hasToken) { cb(false); return; } // 无 token 不能写
-    var content = JSON.stringify(obj);
+    
+    // 【关键修复】写入前清理所有 base64 图片，防止 Gist 爆大到截断导致拉取失败
+    try {
+      ['accounts','technicians'].forEach(function(bin) {
+        (obj[bin] = obj[bin] || []).forEach(function(item) {
+          if (item.photo && typeof item.photo === 'string' && item.photo.length > 200) item.photo = '[cloud_photo]';
+          if (item.photos && Array.isArray(item.photos)) {
+            item.photos = item.photos.map(function(p) {
+              if (typeof p === 'string' && p.length > 200) return '[cloud_photo]';
+              return p;
+            });
+          }
+        });
+      });
+    } catch(e) {}
+var content = JSON.stringify(obj);
+    // 【关键修复】数据超过 500KB 时拒绝写入（防止截断后拉取返回旧数据覆盖本地）
+    if (Buffer.byteLength(content, 'utf-8') > 500000) { try { if (typeof console !== 'undefined') console.warn('rose-sync: 数据过大，跳过云端写入'); } catch(e) {} cb(false); return; }
     var doWrite = function (id) {
       api('/gists/' + id, 'PATCH', { files: fileObj(content) }).then(function (r) {
         cb(!!(r && r.ok));
