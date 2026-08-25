@@ -661,6 +661,15 @@ function renderAll(list) {
 }
 
 function doAudit(id, action) {
+  // 【修复】先立即更新本地缓存，防止 syncAll 竞态覆盖管理员审核结果
+  try {
+    var _lst = JB._getLocal(TECH_KEY) || [];
+    var _changed = false;
+    for (var _ii = 0; _ii < _lst.length; _ii++) {
+      if (_lst[_ii].id === id) { _lst[_ii].status = action === 'approve' ? '已通过' : '已拒绝'; _lst[_ii].auditTime = Date.now(); _changed = true; break; }
+    }
+    if (_changed) JB._setLocal(TECH_KEY, _lst);
+  } catch(_e) {}
   JB.get(TECH_KEY, function(list) {
     if (!Array.isArray(list)) list = [];
     var tech = null;
