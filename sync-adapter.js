@@ -125,7 +125,7 @@
     } catch(e) {}
 var content = JSON.stringify(obj);
     // 【关键修复】数据超过 500KB 时拒绝写入（防止截断后拉取返回旧数据覆盖本地）
-    if (Buffer.byteLength(content, 'utf-8') > 500000) { try { if (typeof console !== 'undefined') console.warn('rose-sync: 数据过大，跳过云端写入'); } catch(e) {} cb(false); return; }
+    if (TextEncoder().encode(content).length > 500000) { try { if (typeof console !== 'undefined') console.warn('rose-sync: 数据过大，跳过云端写入'); } catch(e) {} cb(false); return; }
     var doWrite = function (id) {
       api('/gists/' + id, 'PATCH', { files: fileObj(content) }).then(function (r) {
         cb(!!(r && r.ok));
