@@ -123,6 +123,16 @@
         });
       });
     } catch(e) {}
+    // 【根治】写入 Gist 前完全剥离照片字段（照片只存本地 localStorage 不同步云端）
+    // 原因：GitHub Gist 单文件上限 1MB，照片 3 张就超限，导致 truncated=true 所有设备读不到数据
+    try {
+      ['accounts','technicians'].forEach(function(bin) {
+        (obj[bin] = obj[bin] || []).forEach(function(item) {
+          delete item.photo;
+          delete item.photos;
+        });
+      });
+    } catch(e) {}
 var content = JSON.stringify(obj);
     // 【关键修复】数据超过 500KB 时拒绝写入（防止截断后拉取返回旧数据覆盖本地）
     if (TextEncoder().encode(content).length > 500000) { try { if (typeof console !== 'undefined') console.warn('rose-sync: 数据过大，跳过云端写入'); } catch(e) {} cb(false); return; }
