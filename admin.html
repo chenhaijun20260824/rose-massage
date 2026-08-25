@@ -319,6 +319,7 @@ var ROSE_GH_GIST = "335732b242ed305912b3a3d5c6ce9dc1";
   // 合并而非覆盖：云端空/旧数据不会冲掉本地新数据（注册/审核结果）
   function autoPull() {
     if (!gistId) return;
+        try { if (window.__adminAudit) return; } catch(e) {}
     readAll(function (obj) {
       if (!obj) return;
       ['accounts', 'technicians', 'notices', 'audit_log'].forEach(function (bin) {
