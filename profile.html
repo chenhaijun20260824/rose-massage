@@ -566,7 +566,7 @@ function onPhotos(e) {
   var done = 0;
   for (var i = 0; i < toProcess; i++) {
     (function(f) {
-      compressImage(f, 800, 800, 0.7, function(b64) {
+      compressImage(f, 600, 600, 0.6, function(b64) {
         if (!b64) { if (++done === toProcess) renderPhotos(); return; }
         photos.push(b64);
             // 立即持久化到本地，防止刷新丢失
