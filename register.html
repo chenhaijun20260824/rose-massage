@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>
+/*
+ * rose-sync.js — 本地优先同步核心库（取代 jsonbin.js）
+ * 架构：本地优先（localStorage 永远可用），可选接入轻量后端做多端同步。
+ * 默认不接任何云端：零额度、零网络依赖、不会弹"密钥失败"红条。
+ * 多端同步：给 window.RoseSyncAdapter 赋值适配器即可（见 sync-adapter.js 示例）。
+ */
+var JB = {
+  BINS: { accounts: 'accounts', technicians: 'technicians', notices: 'notices', audit_log: 'audit_log' },
+  _adapterNow: function () {
+    try { return (typeof window !== 'undefined' && window.RoseSyncAdapter) ? window.RoseSyncAdapter : null; }
+    catch (e) { return null; }
+  },
+  _storageKey: function (binKey) { return 'rose_' + binKey; },
+  _unwrap: function (v) {
+    var depth = 0;
+    while (depth < 5 && v && typeof v === 'object' && 'record' in v && Object.keys(v).length <= 2) { v = v.record; depth++; }
+    return v;
+  },
+  _getLocal: function (binKey) {
+    try {
+      var v = localStorage.getItem(this._storageKey(binKey));
+      if (!v) return [];
+      return this._unwrap(JSON.parse(v));
+    } catch (e) { return []; }
+  },
+  _setLocal: function (binKey, data) {
+    try {
+      localStorage.setItem(this._storageKey(binKey), JSON.stringify(data));
+      return true;
+    } catch (e) {
+      if (typeof toast === 'function') toast('本地存储已满，请清理浏览器缓存');
+      return false;
+    }
+  },
+  _mergeLists: function (localArr, cloudArr, binKey) {
+    var self = this;
+    var delSet = {};
+    if (binKey) self.getDeleted(binKey).forEach(function (id) { delSet[id] = true; });
+    var map = {}, noKey = [];
+    function ts(it) { return (it && (it.updateTime || it.time || it.registerTime)) || 0; }
+    function keyOf(it) { return it && (it.id || it.account || it.accountId); }
+    function isDel(it) { var k = keyOf(it); return k && delSet[k]; }
+    function add(it) {
+      if (!it || typeof it !== "object") return;
+      if (isDel(it)) return;
+      var k = keyOf(it);
+      if (!k) { noKey.push(it); return; }
+      if (!map[k]) map[k] = [it, ts(it)];
+      else if (ts(it) > map[k][1]) map[k] = [it, ts(it)];
+    }
+    (Array.isArray(cloudArr) ? cloudArr : []).forEach(add);
+    (Array.isArray(localArr) ? localArr : []).forEach(add);
+    var out = [];
+    Object.keys(map).forEach(function (k) { out.push(map[k][0]); });
+    return out.concat(noKey);
+  },
+  get: function (binKey, cb) {
+    var self = this;
+    var local = this._getLocal(binKey);
+    var adapter = this._adapterNow();
+    if (adapter && typeof adapter.pull === "function") {
+      var settled = false;
+      var finish = function (cloudArr, ok) {
+        if (settled) return; settled = true;
+        if (ok && Array.isArray(cloudArr)) {
+          var merged = self._mergeLists(local, cloudArr, binKey);
+          self._setLocal(binKey, merged);
+          cb(merged, true, cloudArr);
+        } else {
+          cb(local, false, local);
+        }
+      };
+      adapter.pull(binKey, finish);
+      setTimeout(function () { finish(local, false); }, 2500);
+    } else {
+      setTimeout(function () { cb(local, true, local); }, 0);
+    }
+  },
+  put: function (binKey, data, cb) {
+    this._setLocal(binKey, data);
+    var adapter = this._adapterNow();
+    if (adapter && typeof adapter.push === "function") {
+      var settled = false;
+      var finish = function (ok) { if (settled) return; settled = true; if (typeof cb === "function") cb(ok); };
+      adapter.push(binKey, data, finish);
+      setTimeout(function () { finish(false); }, 2500);
+    } else {
+      if (typeof cb === "function") setTimeout(function () { cb(true); }, 0);
+    }
+  },
+  syncAll: function (cb) {
+    var adapter = this._adapterNow();
+    if (!adapter) { if (typeof cb === "function") cb(true); return; }
+    var self = this, keys = ["accounts", "technicians", "notices", "audit_log"], pending = keys.length;
+    function done() { pending--; if (pending <= 0 && typeof cb === "function") cb(true); }
+    keys.forEach(function (k) {
+      var snapshot = self._getLocal(k);
+      self.get(k, function (mergedArr, ok, rawArr) {
+        if (!ok) { done(); return; }
+        if (!Array.isArray(rawArr)) rawArr = [];
+        var merged = self._mergeLists(snapshot, rawArr, k);
+        var same = JSON.stringify(merged) === JSON.stringify(rawArr);
+        if (same) done();
+        else self.put(k, merged, function () { done(); });
+      });
+    });
+  },
+  getCurrentUser: function () {
+    try { var raw = localStorage.getItem("rose_current_user"); return raw ? JSON.parse(raw) : null; }
+    catch (e) { return null; }
+  },
+  genId: function () {
+    var ts = Date.now().toString(36);
+    var r1 = Math.random().toString(36).slice(2);
+    var r2 = "";
+    try { r2 = crypto.getRandomValues(new Uint32Array(1))[0].toString(36); }
+    catch (e) { r2 = Math.random().toString(36).slice(2); }
+    return ts + r1 + r2;
+  },
+  _deletedKey: function (binKey) { return 'rose_deleted_' + binKey; },
+  getDeleted: function (binKey) {
+    try { return JSON.parse(localStorage.getItem(this._deletedKey(binKey)) || "[]"); } catch (e) { return []; }
+  },
+  markDeleted: function (binKey, id) {
+    if (!id) return;
+    var d = this.getDeleted(binKey);
+    if (d.indexOf(id) < 0) d.push(id);
+    try { localStorage.setItem(this._deletedKey(binKey), JSON.stringify(d)); } catch (e) {}
+  },
+  unmarkDeleted: function (binKey, id) {
+    var d = this.getDeleted(binKey).filter(function (x) { return x !== id; });
+    try { localStorage.setItem(this._deletedKey(binKey), JSON.stringify(d)); } catch (e) {}
+  }
+};
+
+// 页面加载后如有适配器则静默同步；纯本地模式下直接 no-op（不联网、不弹窗）
+setTimeout(function () { try { JB.syncAll(); } catch (e) {} }, 800);
+
+// 全局错误捕获（保留，便于排查）
+window.onerror = function (m, s, l, c) {
+  try {
+    var d = document.createElement("div");
+    d.style.cssText = "position:fixed;bottom:0;left:0;right:0;background:#c00;color:#fff;font-size:12px;padding:8px;z-index:99999;white-space:pre-wrap;";
+    d.textContent = "页面报错: " + m + " (" + l + ":" + c + ")";
+    (document.body || document.documentElement).appendChild(d);
+  } catch (e) {}
+  return false;
+};
+
+/*
+ * 可选多端同步：在引入本文件之后、页面逻辑之前设置 window.RoseSyncAdapter 即可，
+ * 例如 sync-adapter.js。本地永远优先，后端不可用也不影响本机数据。
+ */
+</script><script>
+/* ============================================================
+ * 内嵌 GitHub 令牌（与首页一致）：数据直接读写共享 Gist
+ * 安全提示：令牌写在文件里，谁拿到本文件谁就能访问你的 Gist，勿外传
+ * ============================================================ */
+// ROSE_GH_PAT configured via setup-token.html
+var ROSE_GH_GIST = "335732b242ed305912b3a3d5c6ce9dc1";
+</script>
+<script>
+/*
+ * sync-adapter.js — GitHub Gist 后端适配器（本地优先 + 多端同步）
+ * 由 setup-token.html 把 GitHub PAT / Gist ID 写入 localStorage 后自动启用。
+ * 未配置时本文件直接 return，页面退化为纯本地（零网络、不报错）。
+ *
+ * 存储模型：一个公开 Gist，内含单个文件 rose-sync.json = {
+ *   accounts:[...], technicians:[...], notices:[...], audit_log:[...],
+ *   __deleted:{ accounts:[id...], technicians:[id...], ... }   // 墓碑，跨端传播删除
+ * }
+ *
+ * 读取：公开接口（gist.github.com，无需 token），所有设备打开即可读数据
+ * 写入：需认证 PATCH（保护数据不被任意篡改），写入前先读最新版避免覆盖
+ *
+ * 适配器对外满足 rose-sync.js 的契约：
+ *   pull(binKey, cb)      -> cb(array, ok, deletedIds)
+ *   push(binKey, data, deletedIds, cb) -> cb(ok)
+ */
+(function () {
+  var TOKEN_KEY = 'rose_gh_token';
+  var GIST_KEY  = 'rose_gh_gist';
+  var BASE_KEY  = 'rose_gh_api_base';
+  var FILE = 'rose-sync.json';
+  var BINS = ['accounts', 'technicians', 'notices', 'audit_log'];
+  var DESCRIPTION = 'rose-massage 本地优先同步存储（公开版）';
+  var DEFAULT_GIST_ID = '335732b242ed305912b3a3d5c6ce9dc1'; // 公开数据 Gist，所有设备共用
+
+  function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+  var token = lsGet(TOKEN_KEY);
+  var base = lsGet(BASE_KEY) || 'https://api.github.com';
+    // 迁移：清掉旧账号遗留的不可写 Gist ID，强制改用新账号共享 Gist
+  (function () {
+    var cached = lsGet(GIST_KEY);
+    if (cached && cached !== DEFAULT_GIST_ID) {
+      try { localStorage.removeItem(GIST_KEY); } catch (e) {}
+    }
+  })();
+  var gistId = lsGet(GIST_KEY) || DEFAULT_GIST_ID; // 首次无 localStorage 则用默认 Gist（公开可读）
+  var hasToken = !!(token && token.trim());
+
+  // 令牌优先级：localStorage（配置页/连接云端写入）> 页面内嵌 ROSE_GH_PAT（首页/后台复用）
+  // validPat 校验 ghp_ / github_pat_ 前缀，占位符（“在此填入…”）自动忽略
+  function validPat(t) {
+    t = String(t || '').trim();
+    if (t.indexOf('ghp_') === 0 || t.indexOf('github_pat_') === 0) return t;
+    return '';
+  }
+  var DEFAULT_PAT = (typeof window !== 'undefined' && window.ROSE_GH_PAT) ? validPat(window.ROSE_GH_PAT) : '';
+  token = validPat(token) || DEFAULT_PAT;
+  hasToken = !!token;
+
+  function headers() {
+    return {
+      'Authorization': 'Bearer ' + token,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    };
+  }
+  function fileObj(content) { var o = {}; o[FILE] = { content: content }; return o; }
+
+  // 认证请求（读取+写入均需认证）
+  function api(path, method, body) {
+    return fetch(base + path, {
+      method: method || 'GET',
+      headers: headers(),
+      body: body ? JSON.stringify(body) : undefined
+    });
+  }
+
+  // 读取 gist 全部 bins -> obj 或 null
+  // 无 token 时：用公开 gist.github.com 接口（无需认证，任何设备可读）
+  // 有 token 时：用认证 API（获取最新 raw_url）
+  function readAll(cb) {
+    if (!gistId) return cb(null);
+    if (!hasToken) {
+      // 公开接口：通过 gist.github.com 获取文件列表 → raw_url → 内容
+      fetch('https://gist.github.com/' + gistId, { headers: { 'Accept': 'application/json' } })
+        .then(function (r) { if (!r.ok) return cb(null); return r.json(); })
+        .then(function (d) {
+          if (!d || !d.files || !d.files[FILE]) return cb(null);
+          var rawUrl = d.files[FILE].raw_url;
+          if (!rawUrl) return cb(null);
+          return fetch(rawUrl);
+        })
+        .then(function (r) { if (!r || !r.ok) return cb(null); return r.text(); })
+        .then(function (txt) {
+          try { cb(JSON.parse(txt)); } catch (e) { cb(null); }
+        })
+        .catch(function () { cb(null); });
+    } else {
+      // 认证接口：获取最新 raw_url 再拉内容（确保拿到最新版本）
+      api('/gists/' + gistId, 'GET').then(function (r) {
+        if (!r.ok) return cb(null);
+        return r.json().then(function (d) {
+          var f = d.files && d.files[FILE];
+          var rawUrl = f && f.raw_url;
+          if (!rawUrl) return cb(null);
+          return fetch(rawUrl);
+        }).then(function (r) { if (!r || !r.ok) return cb(null); return r.text(); })
+        .then(function (txt) { try { cb(JSON.parse(txt)); } catch (e) { cb(null); } })
+        .catch(function () { cb(null); });
+      }).catch(function () { cb(null); });
+    }
+  }
+
+  // 写入 gist 全部 bins（需认证 PATCH）
+  function writeAll(obj, cb) {
+    if (!hasToken) { cb(false); return; } // 无 token 不能写
+    if (!hasToken) { cb(false); return; }
+    var content = JSON.stringify(obj);
+    if (typeof Buffer !== 'undefined' && Buffer.byteLength(content, 'utf-8') > 500000) { try { console.warn('rose-sync: data too large, skip write'); } catch(e) {} cb(false); return; }
+var content = JSON.stringify(obj);
+    var doWrite = function (id) {
+      api('/gists/' + id, 'PATCH', { files: fileObj(content) }).then(function (r) {
+        cb(!!(r && r.ok));
+      }).catch(function () { cb(false); });
+    };
+    if (gistId) return doWrite(gistId);
+    // 首次：查找同令牌已有 gist 或新建公开 gist
+    resolveGist(function (id) {
+      if (!id) return cb(false);
+      gistId = id;
+      doWrite(gistId);
+    });
+  }
+
+  // 用固定 description 在同一 GitHub 账号下查找/复用同一个 gist，实现多设备自动共享
+  function findExistingGist(scanCb) {
+    api('/user/gists?per_page=100', 'GET').then(function (r) {
+      if (!r.ok) return scanCb(null);
+      return r.json().then(function (list) {
+        var found = null;
+        (list || []).forEach(function (g) { if (g.description === DESCRIPTION) found = g.id; });
+        scanCb(found);
+      });
+    }).catch(function () { scanCb(null); });
+  }
+  function resolveGist(cb) {
+    if (gistId) return cb(gistId);
+    findExistingGist(function (existing) {
+      if (existing) { gistId = existing; lsSet(GIST_KEY, gistId); return cb(gistId); }
+      api('/gists', 'POST', { description: DESCRIPTION, public: true, files: fileObj('{}') }).then(function (r) {
+        if (!r.ok) return cb(null);
+        return r.json().then(function (d) { gistId = d.id; lsSet(GIST_KEY, gistId); cb(gistId); });
+      }).catch(function () { cb(null); });
+    });
+  }
+  window.RoseSyncResolve = resolveGist;
+
+  // 自动静默拉取：页面加载时立即拉取云端数据并【合并】写入本地存储
+  // 合并而非覆盖：云端空/旧数据不会冲掉本地新数据（注册/审核结果）
+  function autoPull() {
+    if (!gistId) return;
+    readAll(function (obj) {
+      if (!obj) return;
+      ['accounts', 'technicians', 'notices', 'audit_log'].forEach(function (bin) {
+        var key = 'rose_' + bin;
+        var arr = obj[bin];
+        if (!Array.isArray(arr)) return;
+        try {
+          var localArr = [];
+          var raw = localStorage.getItem(key);
+          if (raw) { try { localArr = JSON.parse(raw); } catch (e) { localArr = []; } }
+          var merged;
+          if (window.JB && JB._mergeLists && Array.isArray(localArr)) {
+            merged = JB._mergeLists(localArr, arr, bin); // 本地优先 + 云端补充 + 本地墓碑过滤
+          } else {
+            merged = arr;
+          }
+          localStorage.setItem(key, JSON.stringify(merged));
+        } catch (e) {}
+      });
+      // 墓碑传播：云端删除同步到本地
+      var del = obj.__deleted;
+      if (del && window.JB && JB.markDeleted) {
+        Object.keys(del).forEach(function (bin) {
+          var ids = del[bin];
+          if (!Array.isArray(ids)) return;
+          ids.forEach(function (id) { try { JB.markDeleted(bin, id); } catch (e) {} });
+        });
+      }
+      try { localStorage.setItem('rose_cloud_version', String(Date.now())); } catch (e) {}
+    });
+  }
+
+  // 页面加载后立即拉取（早于 800ms 的 syncAll；主动触发一次）
+  if (window.JB) { JB.autoPull = autoPull; JB.autoPull(); }
+  window.addEventListener('load', function () { setTimeout(function () { if (window.JB && JB.autoPull) JB.autoPull(); }, 50); });
+
+  // 写入串行化，避免并发 push 互相覆盖（每个 push 都是 读-改-写）
+  var chain = Promise.resolve();
+
+  window.RoseSyncAdapter = {
+    endpoint: base + '/gists/' + gistId,
+    pull: function (binKey, cb) {
+      readAll(function (obj) {
+        if (!obj) return cb([], false, []);
+        var del = (obj.__deleted && Array.isArray(obj.__deleted[binKey])) ? obj.__deleted[binKey] : [];
+        var arr = obj[binKey];
+        cb(Array.isArray(arr) ? arr : [], true, del);
+      });
+    },
+    push: function (binKey, data, deletedIds, cb) {
+      chain = chain.then(function () {
+        return new Promise(function (resolve) {
+          readAll(function (cur) {
+            var obj = cur || {};
+            BINS.forEach(function (b) { if (!(b in obj)) obj[b] = []; });
+            obj[binKey] = data;
+            obj.__deleted = obj.__deleted || {};
+            obj.__deleted[binKey] = deletedIds || [];
+            writeAll(obj, function (ok) { resolve(ok); });
+          });
+        });
+      }).then(function (ok) { if (typeof cb === 'function') cb(ok); },
+               function () { if (typeof cb === 'function') cb(false); });
+    }
+  };
+})();
+
+</script>
+
+
+
+  <title>登录 - 玫瑰按摩</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #FFF5F7; color: #333; min-height: 100vh; display: flex; flex-direction: column; }
+    .header { background: linear-gradient(135deg, #C2185B, #E91E63); color: #fff; padding: 16px; text-align: center; font-size: 18px; font-weight: bold; }
+    .container { flex: 1; display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .card { background: #fff; border-radius: 16px; padding: 28px 24px; width: 100%; max-width: 400px; box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+    .card h2 { text-align: center; color: #C2185B; margin-bottom: 20px; font-size: 20px; }
+    .form-group { margin-bottom: 14px; }
+    .form-label { font-size: 13px; color: #666; margin-bottom: 6px; display: block; font-weight: 500; }
+    .form-input { width: 100%; padding: 12px 14px; border: 1.5px solid #e0e0e0; border-radius: 10px; font-size: 15px; outline: none; box-sizing: border-box; font-family: inherit; }
+    .form-input:focus { border-color: #C2185B; }
+    .btn { width: 100%; padding: 14px; background: linear-gradient(135deg, #C2185B, #E91E63); color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 8px; }
+    .btn:active { transform: scale(.98); }
+    .btn:disabled { opacity: .6; cursor: not-allowed; }
+    .tip { font-size: 12px; color: #bbb; text-align: center; margin-top: 14px; }
+    .tip a { color: #C2185B; text-decoration: none; }
+    .back { text-align: center; margin-top: 16px; font-size: 13px; }
+    .back a { color: #999; text-decoration: none; }
+    .toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(0,0,0,.8); color: #fff; padding: 12px 28px; border-radius: 10px; font-size: 14px; z-index: 99999; }
+  </style>
+
+  <!-- PWA 配置 -->
+  <link rel="manifest" href="manifest.json?v=20260817">
+  <meta name="theme-color" content="#C2185B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%23C2185B' width='192' height='192' rx='24'/%3E%3Ctext x='96' y='120' font-size='80' text-anchor='middle'%3E🌹%3C/text%3E%3C/svg%3E">
+<script>
+window.imgErr = function(img) {
+  try {
+    img.onerror = null;
+    img.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 280 220'><rect width='280' height='220' fill='%23fce4ec'/><text x='140' y='125' font-size='40' text-anchor='middle' fill='%23C2185B'>暂无图片</text></svg>";
+  } catch (e) {}
+};
+</script>
+</head>
+<body>
+  <div class="header">🌹 登录</div>
+  <div class="container">
+    <div class="card">
+      <h2>🌹 登录</h2>
+      <div class="form-group">
+        <label class="form-label">手机号码</label>
+        <input class="form-input" id="phone" placeholder="请输入手机号" maxlength="11">
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码</label>
+        <input class="form-input" id="pwd" type="password" placeholder="请输入密码">
+      </div>
+      <button class="btn" id="submitBtn" onclick="doLogin()">登录</button>
+      <div class="tip">还没有账号？<a href="register_v2.html?v=20260824">立即注册</a></div>
+      <div class="back"><a href="index.html?v=20260817">← 返回首页</a></div>
+    </div>
+  </div>
+  <div id="toastBox"></div>
+
+<script>
+function toast(msg) {
+  var el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(function() { el.remove(); }, 2200);
+}
+
+function doLogin() {
+  var phone = document.getElementById('phone').value.trim();
+  var pwd = document.getElementById('pwd').value;
+  var btn = document.getElementById('submitBtn');
+  if (!/^1\d{10}$/.test(phone)) { toast('请输入正确的手机号'); return; }
+  if (!pwd) { toast('请输入密码'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '登录中...';
+
+  // 3秒超时兜底：云端连不上则查本地
+  var timedOut = false;
+  var timer = setTimeout(function() {
+    timedOut = true;
+    btn.disabled = false;
+    btn.textContent = '登录';
+    // 本地兜底查找
+    try {
+      var local = JSON.parse(localStorage.getItem('rose_accounts') || '[]');
+      var found = null;
+      for (var i = 0; i < local.length; i++) {
+        if (local[i].account === phone && local[i].password === pwd) { found = local[i]; break; }
+      }
+      if (found) {
+        localStorage.setItem('rose_current_user', JSON.stringify(found));
+        toast('登录成功 ✓（本地模式）');
+        setTimeout(function() { location.href='profile.html?v=20260817'; }, 600);
+      } else {
+        toast('手机号或密码错误');
+      }
+    } catch(e) {
+      toast('网络超时，请重试');
+    }
+  }, 3000);
+
+  JB.get('accounts', function(list) {
+    if (timedOut) return;
+    clearTimeout(timer);
+    if (!Array.isArray(list)) list = [];
+    var found = null;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].account === phone && list[i].password === pwd) { found = list[i]; break; }
+    }
+    if (found) {
+      localStorage.setItem('rose_current_user', JSON.stringify(found));
+      toast('登录成功 ✓');
+      setTimeout(function() { location.href='profile.html?v=20260817'; }, 600);
+    } else {
+      toast('手机号或密码错误');
+      btn.disabled = false;
+      btn.textContent = '登录';
+    }
+  });
+}
+</script>
+
+<script>
+// 注册 Service Worker (PWA)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js?v=20260824')
+    .then(function(reg) { console.log('[PWA] SW 注册成功:', reg.scope); })
+    .catch(function(err) { console.log('[PWA] SW 注册失败:', err); });
+}
+</script>
+<script src="sync-adapter.js?v=20260824"></script>
+</body>
+</html>
