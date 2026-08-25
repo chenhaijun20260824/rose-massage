@@ -652,7 +652,10 @@ function submitOrUpdate() {
       if (list[i].accountId === user.id) { list[i] = entry; found = true; break; }
     }
     if (!found) list.unshift(entry);
-    JB.put('technicians', list, function(ok) {
+    // 【修复】防覆盖：如果该账号已有已通过记录，不再用待审核覆盖管理员审核结果
+    var _ex = list.find(function(t){ return t.accountId === user.id && t.id !== entry.id && t.status === '已通过'; });
+    if (_ex) { btn.disabled = false; btn.textContent = '资料已审核通过，无需重复提交'; toast('当前资料已审核通过 √'); return; }
+        JB.put('technicians', list, function(ok) {
       btn.disabled = false;
       if (ok) {
         myTech = entry;
