@@ -482,12 +482,6 @@ window.imgErr = function(img) {
             <input type="text" class="form-input" id="s3" placeholder="第3项，如：精油SPA">
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">形象照片（最多3张）</label>
-          <div class="photos" id="photoBox"></div>
-          <div class="photo-add" id="photoAdd" onclick="document.getElementById('photoFile').click()">+</div>
-          <input type="file" id="photoFile" accept="image/*" multiple style="display:none;" onchange="onPhotos(event)">
-        </div>
       </div>
       <button class="btn" id="submitBtn" onclick="submitOrUpdate()">提交审核</button>
       <div class="logout-btn" onclick="logout()">退出登录</div>
@@ -515,26 +509,6 @@ function asArr(v) {
   return [];
 }
 
-function compressImage(file, maxW, maxH, q, cb) {
-  var r = new FileReader();
-  r.onload = function(ev) {
-    var img = new Image();
-    img.onload = function() {
-      var w = img.width, h = img.height;
-      if (w > maxW) { h = h * maxW / w; w = maxW; }
-      if (h > maxH) { w = w * maxH / h; h = maxH; }
-      var c = document.createElement('canvas');
-      c.width = w; c.height = h;
-      var ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      cb(c.toDataURL('image/jpeg', q));
-    };
-    img.onerror = function() { cb(null); };
-    img.src = ev.target.result;
-  };
-  r.onerror = function() { cb(null); };
-  r.readAsDataURL(file);
-}
 
 function logout() {
   if (confirm('确定退出？')) {
@@ -543,40 +517,8 @@ function logout() {
   }
 }
 
-function renderPhotos() {
-  var box = document.getElementById('photoBox');
-  var html = '';
-  for (var i = 0; i < photos.length; i++) {
-    html += '<div class="photo-item"><img src="' + photos[i] + '" onerror="imgErr(this)"><div class="photo-del" onclick="delPhoto(' + i + ')">×</div></div>';
-  }
-  box.innerHTML = html;
-  document.getElementById('photoAdd').style.display = photos.length >= 3 ? 'none' : 'flex';
-}
 
-function delPhoto(i) { photos.splice(i, 1); renderPhotos(); }
 
-// ===== 图片处理（压缩后直接存 base64，数据随 Gist 同步，无需图床）=====
-function onPhotos(e) {
-  var files = e.target.files;
-  if (!files || files.length === 0) return;
-  var remain = 3 - photos.length;
-  if (remain <= 0) return;
-  var toProcess = Math.min(remain, files.length);
-  var done = 0;
-  for (var i = 0; i < toProcess; i++) {
-    (function(f) {
-      compressImage(f, 600, 600, 0.6, function(b64) {
-        if (!b64) { if (++done === toProcess) renderPhotos(); return; }
-        photos.push(b64);
-            // 立即持久化到本地，防止刷新丢失
-            var localTech = JB._getLocal('technicians').find(function(t){ return user && t.accountId === user.id; });
-            if (localTech) { localTech.photos = photos.slice(); JB._setLocal('technicians', JB._getLocal('technicians')); }
-            if (++done === toProcess) renderPhotos();
-      });
-    })(files[i]);
-  }
-  e.target.value = '';
-}
 
 function renderStatus() {
   var tip = document.getElementById('statusTip');
@@ -593,8 +535,8 @@ function renderStatus() {
     document.getElementById('s1').value = svcs[0] || '';
     document.getElementById('s2').value = svcs[1] || '';
     document.getElementById('s3').value = svcs[2] || '';
-    photos = myTech.photos ? myTech.photos.slice() : [];
-    renderPhotos();
+    photos = [];
+    
     if (myTech.status === '待审核') {
       tip.className = 'status-tip tip-wait';
       tip.innerHTML = '⏳ <b>审核中</b><br>您的资料已提交，请耐心等待管理员审核...';
@@ -613,7 +555,7 @@ function renderStatus() {
     tip.innerHTML = '📋 请填写下方资料并提交审核（带 * 为必填）';
     btn.textContent = '提交审核';
     photos = [];
-    renderPhotos();
+    
   }
 }
 
@@ -635,8 +577,7 @@ function submitOrUpdate() {
   if (!address) { toast('请填写地址'); return; }
   if (!price) { toast('请填写价格'); return; }
   if (svcs.length === 0) { toast('请填写服务项目'); return; }
-  if (photos.length === 0) { toast('请上传至少1张照片'); return; }
-
+  
   var btn = document.getElementById('submitBtn');
   btn.disabled = true;
   btn.textContent = '⏳ 上传图片中（请勿关闭页面）...';
