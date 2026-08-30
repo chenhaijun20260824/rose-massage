@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>云端配置 - 百合上门</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif; background:#FFF5F7; color:#333; min-height:100vh; padding:20px; }
+  .card { background:#fff; border-radius:16px; padding:24px; max-width:540px; margin:20px auto; box-shadow:0 4px 20px rgba(0,0,0,.08); }
+  h2 { color:#C2185B; text-align:center; margin-bottom:6px; }
+  .sub { text-align:center; color:#999; font-size:13px; margin-bottom:18px; }
+  .form-group { margin-bottom:14px; }
+  label { display:block; font-size:13px; color:#666; margin-bottom:6px; font-weight:500; }
+  label .hint { font-weight:normal; color:#999; font-size:12px; }
+  input { width:100%; padding:11px 14px; border:1.5px solid #e0e0e0; border-radius:10px; font-size:14px; outline:none; box-sizing:border-box; font-family:inherit; }
+  input:focus { border-color:#C2185B; }
+  .btn { width:100%; padding:13px; background:linear-gradient(135deg,#C2185B,#E91E63); color:#fff; border:none; border-radius:10px; font-size:16px; font-weight:bold; cursor:pointer; margin-top:6px; }
+  .btn:active { transform:scale(.98); }
+  .btn.ghost { background:#fff; color:#C2185B; border:1.5px solid #C2185B; }
+  .tip { font-size:13px; padding:10px 12px; border-radius:10px; margin-top:12px; line-height:1.6; display:none; }
+  .tip-ok { background:#E8F5E9; color:#2E7D32; }
+  .tip-err { background:#FFEBEE; color:#C62828; }
+  .tip-info { background:#E3F2FD; color:#1565C0; }
+  a { color:#C2185B; }
+  .step { font-size:12px; color:#666; line-height:1.8; background:#fafafa; border-radius:10px; padding:10px 12px; margin-bottom:14px; }
+  code { background:#f0f0f0; padding:1px 5px; border-radius:4px; word-break:break-all; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h2>☁️ 云端配置</h2>
+  <div class="sub">用 GitHub 仓库当云数据库 · 无大小截断</div>
+
+  <div class="step">
+    <b>准备工作（一次性）：</b><br>
+    1. 登录 GitHub → <b>New repository</b> → 名字如 <code>rose-massage-data</code>，Public，<b>Initialize with README</b> 打勾；<br>
+    2. 进入仓库 → 顶部 <b>Add file → Create new file</b> → 路径填 <code>data/accounts.json</code>，内容 <code>[]</code>，提交；<br>
+    3. 同样创建 <code>data/technicians.json</code> / <code>data/notices.json</code> / <code>data/audit_log.json</code>，内容都是 <code>[]</code>；<br>
+    4. GitHub → <b>Settings → Developer settings → Personal access tokens → Fine-grained tokens</b>，建一个有 <code>Contents: Read and write</code> 权限（限定到 <code>rose-massage-data</code> 仓库）的 Token，复制。<br>
+    <span style="color:#999">老式 Token 也行，只要勾了 <code>repo</code> 权限即可。</span>
+  </div>
+
+  <div class="form-group">
+    <label>GitHub Token <span class="hint">（需有 repo / Contents 写权限）</span></label>
+    <input id="token" placeholder="ghp_..." autocomplete="off">
+  </div>
+  <div class="form-group">
+    <label>仓库 <span class="hint">（owner/repo）</span></label>
+    <input id="repo" placeholder="chenhaijun20260824/rose-massage-data" value="chenhaijun20260824/rose-massage-data">
+  </div>
+  <div class="form-group">
+    <label>分支 <span class="hint">（默认 main）</span></label>
+    <input id="branch" placeholder="main" value="main">
+  </div>
+  <div class="form-group">
+    <label>数据文件夹 <span class="hint">（桶文件放这里）</span></label>
+    <input id="path" placeholder="data" value="data">
+  </div>
+
+  <button class="btn" onclick="testConn()">① 测试连接</button>
+  <div id="tip" class="tip"></div>
+  <button class="btn" id="saveBtn" onclick="save()" style="margin-top:12px;">② 保存并启用云端</button>
+  <button class="btn ghost" onclick="location.href='index.html'">稍后配置（先用本地模式）</button>
+</div>
+<script>
+function $(id){ return document.getElementById(id); }
+function show(msg, cls){ var t=$('tip'); t.className='tip '+cls; t.innerHTML=msg; t.style.display='block'; }
+
+(function(){
+  try {
+    var raw = localStorage.getItem('rose_cloud_cfg');
+    if (raw) {
+      var c = JSON.parse(raw);
+      if (c.token) $('token').value = c.token;
+      if (c.owner && c.repo) $('repo').value = c.owner + '/' + c.repo;
+      if (c.branch) $('branch').value = c.branch;
+      if (c.path) $('path').value = c.path;
+    }
+  } catch(e){}
+})();
+
+function readForm(){
+  var repoVal = $('repo').value.trim();
+  var owner = '', repo = '';
+  var i = repoVal.indexOf('/');
+  if (i > 0) { owner = repoVal.slice(0, i).trim(); repo = repoVal.slice(i + 1).trim(); }
+  return {
+    token: $('token').value.trim(),
+    owner: owner,
+    repo: repo,
+    branch: $('branch').value.trim() || 'main',
+    path: ($('path').value.trim() || 'data').replace(/^\/+|\/+$/g, '')
+  };
+}
+
+function testConn(){
+  var cfg = readForm();
+  if (!cfg.token) { show('请填写 GitHub Token', 'tip-err'); return; }
+  if (!cfg.owner || !cfg.repo) { show('仓库格式应为 owner/repo', 'tip-err'); return; }
+  show('正在测试连接…', 'tip-info');
+  fetch('https://api.github.com/repos/' + cfg.owner + '/' + cfg.repo, {
+    headers: { 'Authorization': 'token ' + cfg.token, 'Accept': 'application/vnd.github+json' }
+  })
+  .then(function(r){
+    if (r.status === 200) return r.json();
+    if (r.status === 404) throw new Error('仓库 ' + cfg.owner + '/' + cfg.repo + ' 不存在或无权访问');
+    if (r.status === 401) throw new Error('Token 无效或已过期');
+    throw new Error('HTTP ' + r.status);
+  })
+  .then(function(j){
+    // 顺便检查一个桶文件是否可读
+    return fetch('https://raw.githubusercontent.com/' + cfg.owner + '/' + cfg.repo + '/' + cfg.branch + '/' + cfg.path + '/accounts.json')
+      .then(function(r2){
+        var bucketInfo = (r2.status === 200) ? '· 数据桶文件可读 ✓' : '· 数据桶文件尚未创建（保存后会自动创建）';
+        show('✅ 连接成功！<br>仓库：<b>' + j.full_name + '</b>（默认分支 <b>' + j.default_branch + '</b>）<br>' + bucketInfo + '<br>点击「保存并启用」完成配置。', 'tip-ok');
+      });
+  })
+  .catch(function(e){
+    show('❌ ' + (e && e.message ? e.message : e) + '<br>请检查：Token 是否有效且有 Contents 写权限、仓库名是否正确、是否设置了 raw 公开读取。', 'tip-err');
+  });
+}
+
+function save(){
+  var cfg = readForm();
+  if (!cfg.token || !cfg.owner || !cfg.repo) {
+    show('请先填写 Token 和 仓库', 'tip-err');
+    return;
+  }
+  localStorage.setItem('rose_cloud_cfg', JSON.stringify(cfg));
+  var card = document.querySelector('.card');
+  card.innerHTML =
+    '<h2>✅ 已保存</h2>' +
+    '<div class="sub">云端配置已生效</div>' +
+    '<div class="tip tip-ok" style="display:block;">Token 与仓库已写入本设备浏览器。<br>刷新要同步数据的页面（首页 / admin 后台）即可开始云端同步。</div>' +
+    '<button class="btn" onclick="location.href=\'admin.html\'" style="margin-top:14px;">去 admin 后台</button>' +
+    '<button class="btn ghost" onclick="location.href=\'index.html\'">返回首页</button>';
+}
+</script>
+</body>
+</html>
