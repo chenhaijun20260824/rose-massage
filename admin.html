@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+﻿﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -752,6 +752,7 @@ function saveAdminCloud() {
   .catch(function(e) {
     if (msg) { msg.style.color = '#c62828'; msg.textContent = (e && e.message ? e.message : e); }
   });
+}
 if ('serviceWorker' in navigator) {
   try {
     navigator.serviceWorker.register('sw.js?v=20260824')
