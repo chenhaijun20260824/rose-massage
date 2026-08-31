@@ -397,7 +397,7 @@ function openCloudModal() {
       '<p style="color:#666;font-size:13px;line-height:1.6;margin-bottom:14px;">粘贴「连接码」（GitHub Token）即可连接，无需其它设置。其它设备复制此连接码后粘贴即可同步。</p>' +
       '<input id="cloudTokenInput" placeholder="ghp_..." autocomplete="off" style="width:100%;padding:11px 14px;border:1.5px solid #e0e0e0;border-radius:10px;font-size:14px;margin-bottom:12px;box-sizing:border-box;">' +
       '<button class="btn" onclick="doConnectFromModal()">连接云端</button>' +
-      '<button class="btn ghost" onclick="location.href='cloud-setup.html'">高级配置</button>';
+      '<button class="btn ghost" onclick="location.href="cloud-setup.html"">高级配置</button>';
     setTimeout(function(){ var i=document.getElementById('cloudTokenInput'); if(i) i.focus(); }, 50);
   }
   modal.style.display = 'flex';
